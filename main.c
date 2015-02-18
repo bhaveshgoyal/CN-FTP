@@ -25,6 +25,7 @@ void print_error_message(char *message) {
 }
 
 int main(int argc, char *argv[]) {
+	int yes = 1;
 	socklen_t addr_len;
 	char server_buffer[MAXBUF], error_message[MAXBUF];
 
@@ -37,6 +38,12 @@ int main(int argc, char *argv[]) {
 	// Create the socket
 	if((self.server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		sprintf(error_message, "Error creating socket: %s\n", strerror(errno));
+		print_error_message(error_message);
+	}
+
+	// Reuse local address
+	if(setsockopt(self.server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+		sprintf(error_message, "Error in local address reuse: %s\n", strerror(errno));
 		print_error_message(error_message);
 	}
 
