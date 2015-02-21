@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <pthread.h>
+#include <dirent.h>
 
 // Constants
 #define PORT		8888
@@ -19,7 +20,7 @@ struct network_info {
 	struct sockaddr_in conn_addr;
 } server, in_client, out_client;
 
-char NICK[MAXBUF];
+char NICK[MAXBUF], UPLOAD_FOLDER[MAXBUF];
 
 // Function declarations
 void print_error_message(char *message);
@@ -73,6 +74,7 @@ void handle_server() {
 	char server_buffer[MAXBUF];
 	socklen_t addr_len;
 	pthread_t conn_thread;
+	printf("[%s-SERVER]: Upload folder path set to: %s\n", NICK, UPLOAD_FOLDER);
 	init_server();
 	printf("[%s-SERVER]: Serving at: %s:%d\n", NICK, inet_ntoa(server.conn_addr.sin_addr), PORT);
 	addr_len = sizeof(struct sockaddr_in);
@@ -91,19 +93,34 @@ void handle_in_client(void *socket_info) {
 	// Get the socket descriptor
 	struct network_info sock = *(struct network_info *)socket_info;
 	int read_size;
-	char *message , client_message[MAXBUF];
+	DIR *dir;
+	struct dirent *ent;
+	char out_message[MAXBUF], client_message[MAXBUF], args[MAXBUF];
 	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 
 	// Send some messages to the client
-	message = "Greetings! I am your connection handler\n";
-	write(sock.socket_desc, message, strlen(message));
-	message = "Now type something and i shall repeat what you type \n";
-	write(sock.socket_desc, message, strlen(message));
+//	message = "Greetings! I am your connection handler\n";
+//	write(sock.socket_desc, message, strlen(message));
+//	message = "Now type something and i shall repeat what you type\n";
+//	write(sock.socket_desc, message, strlen(message));
 
 	// Receive a message from client
 	while((read_size = recv(sock.socket_desc, client_message, MAXBUF, 0)) > 0) {
 		// End of string marker
 		client_message[read_size] = '\0';
+		printf("%s\n", client_message);
+		if(client_message[0] == '1') {
+			sscanf(client_message, "1:%s", args);
+			if(strcmp(args, "longlist") == 0) {
+				dir = opendir(UPLOAD_FOLDER);
+				while((ent = readdir (dir)) != NULL) {
+					printf("%s\n", ent->d_name);
+					strcpy(out_message, ent->d_name);
+					write(sock.socket_desc, out_message, strlen(out_message));
+				}
+				closedir (dir);
+			}
+		}
 		// Send the message back to client
 		write(sock.socket_desc, client_message, strlen(client_message));
 		// Clear the message buffer
@@ -147,20 +164,60 @@ void init_out_client() {
 }
 
 void handle_out_client() {
-	char client_buffer[MAXBUF], option[MAXBUF];
+	char *out_message, args[MAXBUF], in_message[MAXBUF];
+	int option, read_size;
 	init_out_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
 	while(1) {
-		printf("Enter option bro\n");
-		scanf("%s", option);
+		printf("Chose one of the given options:\n");
+		printf("1. IndexGet --flag (args)\n");
+		printf("2. FileHash --flag (args)\n");
+		printf("3. FileDownload --flag (args)\n");
+		printf("4. FileUpload --flag (args)\n");
+		printf("Enter option: ");
+		scanf("%d%s", &option, args);
+		if(option == 1) {
+			if(strcmp(args, "--longlist") == 0) {
+				out_message = "1:longlist";
+			}
+		}
+		printf("writing to socket now\n");
+		write(out_client.socket_desc, out_message, strlen(out_message));
+		while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) > 0) {
+			printf("%s", in_message);
+		}
+	}
+}
+
+void change_to_absolute_path() {
+	char temp_path[MAXBUF];
+	int i, j;
+	if(UPLOAD_FOLDER[0] == '~') {
+		strcpy(temp_path, UPLOAD_FOLDER);
+		strcpy(UPLOAD_FOLDER, getenv("HOME"));
+		for(i = 1, j = strlen(UPLOAD_FOLDER); temp_path[i] != '\0'; i++, j++) {
+			UPLOAD_FOLDER[j] = temp_path[i];
+		}
+		UPLOAD_FOLDER[j] = '\0';
 	}
 }
 
 int main(int argc, char *argv[]) {
-	int status, option;
+	int status, option, valid_folder = 0;
+	char temp_path[MAXBUF];
+	DIR* dir;
 	pthread_t server_thread, client_thread;
 	printf("Enter nick: ");
 	scanf("%s", NICK);
+	while(!valid_folder) {
+		printf("Enter upload folder path: ");
+		scanf("%s", UPLOAD_FOLDER);
+		change_to_absolute_path();
+		dir = opendir(UPLOAD_FOLDER);
+		if(dir) {
+			valid_folder = 1;
+		}
+	}
 	pthread_create(&server_thread, NULL, handle_server, NULL);
 	pthread_create(&client_thread, NULL, handle_out_client, NULL);
 	pthread_join(server_thread, NULL);

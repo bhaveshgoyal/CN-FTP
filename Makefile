@@ -4,7 +4,7 @@ SRCS = main.c
 
 all: $(PROG)
 $(PROG):	$(SRCS)
-	$(CC) -o $(PROG) $(SRCS)
+	$(CC) -o $(PROG) $(SRCS) -lpthread
 
 clean:
 	rm -f $(PROG)
