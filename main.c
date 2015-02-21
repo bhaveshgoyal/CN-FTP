@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <pthread.h>
 
 // Constants
 #define PORT		8888
@@ -18,6 +19,11 @@ struct network_info {
 	struct sockaddr_in server_addr, client_addr;
 } self, other;
 
+struct machine_info {
+	int socket_desc;
+	struct sockaddr_in conn_addr;
+} machine_info;
+
 char NICK[MAXBUF];
 
 // Function declarations
@@ -26,6 +32,7 @@ void init_server();
 void init_client();
 void handle_server();
 void handle_client();
+void incoming_connection_handler(void *);
 
 void print_error_message(char *message) {
 	fprintf(stderr, message);
@@ -70,20 +77,47 @@ void init_server() {
 void handle_server() {
 	char server_buffer[MAXBUF];
 	socklen_t addr_len;
+	pthread_t conn_thread;
 	init_server();
 	printf("[%s-SERVER]: Serving at: %s:%d\n", NICK, inet_ntoa(self.server_addr.sin_addr), PORT);
+	addr_len = sizeof(other.client_fd);
 	// Serve forever
 	while(1) {
-		addr_len = sizeof(other.client_fd);
 		other.client_fd = accept(self.server_fd, (struct sockaddr*)&other.client_addr, &addr_len);
-		printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(other.client_addr.sin_addr), ntohs(other.client_addr.sin_port));
-		/*---Echo back anything sent---*/
-		send(other.client_fd, server_buffer, recv(other.client_fd, server_buffer, MAXBUF, 0), 0);
-		/*---Close data connection---*/
-		close(other.client_fd);
+		machine_info.socket_desc = other.client_fd;
+		machine_info.conn_addr = other.client_addr;
+		pthread_create(&conn_thread, NULL, incoming_connection_handler, (void *)&machine_info);
 	}
-	close(self.server_fd);
 	return;
+}
+
+void incoming_connection_handler(void *socket_info) {
+	//Get the socket descriptor
+	struct machine_info sock = *(struct machine_info *)socket_info;
+	int read_size;
+	char *message , client_message[MAXBUF];
+	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
+	//Send some messages to the client
+	message = "Greetings! I am your connection handler\n";
+	write(sock.socket_desc, message, strlen(message));
+	message = "Now type something and i shall repeat what you type \n";
+	write(sock.socket_desc, message, strlen(message));
+	//Receive a message from client
+	while((read_size = recv(sock.socket_desc, client_message, MAXBUF, 0)) > 0) {
+		//end of string marker
+		client_message[read_size] = '\0';
+		//Send the message back to client
+		write(sock.socket_desc, client_message, strlen(client_message));
+		//clear the message buffer
+		memset(client_message, 0, MAXBUF);
+	}
+	if(read_size == 0) {
+		printf("[%s-SERVER]: Client %s:%d disconnected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
+		fflush(stdout);
+	}
+	else if(read_size == -1) {
+		perror("recv failed");
+	}
 }
 
 void init_client() {
@@ -121,26 +155,24 @@ void init_client() {
 }
 
 void handle_client() {
-	char client_buffer[MAXBUF];
+	char client_buffer[MAXBUF], option[MAXBUF];
 	init_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(self.client_addr.sin_addr), PORT);
+	while(1) {
+		printf("Enter option bro\n");
+		scanf("%s", option);
+	}
 	close(self.client_fd);
 }
 
 int main(int argc, char *argv[]) {
 	int status, option;
-	pid_t pid;
+	pthread_t server_thread, client_thread;
 	printf("Enter nick: ");
 	scanf("%s", NICK);
-	if((pid = fork()) < 0) {
-		print_error_message("Failed to fork process\n");
-	}
-	if(pid == 0) {
-		handle_server();
-	}
-	else {
-		handle_client();
-	}
-	wait(&status);
+	pthread_create(&server_thread, NULL, handle_server, NULL);
+	pthread_create(&client_thread, NULL, handle_client, NULL);
+	pthread_join(server_thread, NULL);
+	pthread_join(client_thread, NULL);
 	return 0;
 }
