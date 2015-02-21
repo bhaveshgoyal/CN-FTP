@@ -9,6 +9,8 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // Constants
 #define PORT		8888
@@ -92,39 +94,66 @@ void handle_server() {
 void handle_in_client(void *socket_info) {
 	// Get the socket descriptor
 	struct network_info sock = *(struct network_info *)socket_info;
-	int read_size;
+	int read_size, len, i, option;
 	DIR *dir;
 	struct dirent *ent;
-	char out_message[MAXBUF], client_message[MAXBUF], args[MAXBUF];
+	struct stat buf;
+	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type;
 	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
-
-	// Send some messages to the client
-//	message = "Greetings! I am your connection handler\n";
-//	write(sock.socket_desc, message, strlen(message));
-//	message = "Now type something and i shall repeat what you type\n";
-//	write(sock.socket_desc, message, strlen(message));
 
 	// Receive a message from client
 	while((read_size = recv(sock.socket_desc, client_message, MAXBUF, 0)) > 0) {
 		// End of string marker
 		client_message[read_size] = '\0';
-		printf("%s\n", client_message);
-		if(client_message[0] == '1') {
-			sscanf(client_message, "1:%s", args);
-			if(strcmp(args, "longlist") == 0) {
-				dir = opendir(UPLOAD_FOLDER);
-				while((ent = readdir (dir)) != NULL) {
-					printf("%s\n", ent->d_name);
-					strcpy(out_message, ent->d_name);
-					write(sock.socket_desc, out_message, strlen(out_message));
-				}
-				closedir (dir);
+//		printf("%s\n", client_message);
+		for(i = 0, len = 1; client_message[i] != '\0'; i++) {
+			if(client_message[i] == ':') {
+				client_message[i] = ' ';
+				len++;
 			}
 		}
-		// Send the message back to client
-		write(sock.socket_desc, client_message, strlen(client_message));
-		// Clear the message buffer
-		memset(client_message, 0, MAXBUF);
+		if(len == 2) {
+			sscanf(client_message, "%d %s", &option, flag);
+			printf("two\n");
+		}
+		else {
+			sscanf(client_message, "%d %s %s", &option, flag, args);
+			printf("three\n");
+		}
+		if(option == 1) {
+			if(strcmp(flag, "longlist") == 0) {
+				dir = opendir(UPLOAD_FOLDER);
+				while((ent = readdir(dir)) != NULL) {
+					if(ent->d_type == DT_REG)
+						file_type = "regular";
+					else if(ent->d_type == DT_DIR)
+						file_type = "directory";
+					else if(ent->d_type == DT_FIFO)
+						file_type = "FIFO";
+					else if(ent->d_type == DT_SOCK)
+						file_type = "socket";
+					else if(ent->d_type == DT_LNK)
+						file_type = "symlink";
+					else if(ent->d_type == DT_BLK)
+						file_type = "block dev";
+					else if(ent->d_type == DT_CHR)
+						file_type = "char dev";
+					else
+						file_type = "???";
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, ent->d_name);
+					stat(filename, &buf);
+					memset(out_message, 0, sizeof(out_message));
+					sprintf(out_message, "%s\t%lld\t%ld\t%s\n", ent->d_name, buf.st_size, buf.st_atime, file_type);
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+				}
+				closedir(dir);
+			}
+		}
+		else if(option == 2) {
+			if(strcmp(flag, "verify") == 0) {
+				printf("MD5 needed\n");
+			}
+		}
 	}
 	printf("[%s-SERVER]: Client %s:%d disconnected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 }
@@ -132,6 +161,7 @@ void handle_in_client(void *socket_info) {
 void init_out_client() {
 	int connected = 0, valid_server_ip = 0;
 	char error_message[MAXBUF], server_ip[MAXBUF];
+	struct timeval tv;
 	// Initialize IP address / port structure
 	bzero(&out_client.conn_addr, sizeof(struct sockaddr_in));
 	out_client.conn_addr.sin_family = AF_INET;
@@ -142,6 +172,11 @@ void init_out_client() {
 		sprintf(error_message, "Error creating socket: %s\n", strerror(errno));
 		print_error_message(error_message);
 	}
+
+	// Set timeout for recv
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+	setsockopt(out_client.socket_desc, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 
 	while(!valid_server_ip || !connected) {
 		printf("Enter server IP: ");
@@ -164,7 +199,7 @@ void init_out_client() {
 }
 
 void handle_out_client() {
-	char *out_message, args[MAXBUF], in_message[MAXBUF];
+	char out_message[MAXBUF], flag[MAXBUF], args[MAXBUF], in_message[MAXBUF];
 	int option, read_size;
 	init_out_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
@@ -175,16 +210,26 @@ void handle_out_client() {
 		printf("3. FileDownload --flag (args)\n");
 		printf("4. FileUpload --flag (args)\n");
 		printf("Enter option: ");
-		scanf("%d%s", &option, args);
+		scanf("%d%s", &option, flag);
+		memset(out_message, 0, sizeof(out_message));
 		if(option == 1) {
-			if(strcmp(args, "--longlist") == 0) {
-				out_message = "1:longlist";
+			if(strcmp(flag, "--longlist") == 0) {
+				sprintf(out_message, "1:longlist");
+				printf("[%s-CLIENT]: Listing of the shared folder from: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
+				printf("File: Name\tSize\tTimestamp\tType\n");
 			}
 		}
-		printf("writing to socket now\n");
-		write(out_client.socket_desc, out_message, strlen(out_message));
+		else if(option == 2) {
+			if(strcmp(flag, "--verify") == 0) {
+				scanf("%s", args);
+				sprintf(out_message, "2:verify:%s", args);
+				printf("%s\n", out_message);
+			}
+		}
+		send(out_client.socket_desc, out_message, strlen(out_message), 0);
 		while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) > 0) {
 			printf("%s", in_message);
+			memset(in_message, 0, sizeof(in_message));
 		}
 	}
 }
@@ -197,6 +242,9 @@ void change_to_absolute_path() {
 		strcpy(UPLOAD_FOLDER, getenv("HOME"));
 		for(i = 1, j = strlen(UPLOAD_FOLDER); temp_path[i] != '\0'; i++, j++) {
 			UPLOAD_FOLDER[j] = temp_path[i];
+		}
+		if(UPLOAD_FOLDER[j-1] != '/') {
+			UPLOAD_FOLDER[j++] = '/';
 		}
 		UPLOAD_FOLDER[j] = '\0';
 	}
