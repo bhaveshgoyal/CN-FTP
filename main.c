@@ -11,7 +11,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#include <time.h>
 // Constants
 #define PORT		8888
 #define MAXBUF		1024
@@ -98,6 +98,9 @@ void handle_in_client(void *socket_info) {
 	DIR *dir;
 	struct dirent *ent;
 	struct stat buf;
+	time_t t1, t2, file_t;
+	struct tm *timeptr,tm1, tm2, tm_file;
+	char start_stamp[MAXBUF], end_stamp[MAXBUF], file_stamp[MAXBUF];
 	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type;
 	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 
@@ -107,7 +110,7 @@ void handle_in_client(void *socket_info) {
 		client_message[read_size] = '\0';
 //		printf("%s\n", client_message);
 		for(i = 0, len = 1; client_message[i] != '\0'; i++) {
-			if(client_message[i] == ':') {
+			if(client_message[i] == '#') {
 				client_message[i] = ' ';
 				len++;
 			}
@@ -116,9 +119,14 @@ void handle_in_client(void *socket_info) {
 			sscanf(client_message, "%d %s", &option, flag);
 			printf("two\n");
 		}
+		// else if (len == 4){
+		// sscanf(client_message, "%d %s %s %s", &option, flag, start_stamp, end_stamp);
+		// 	printf("four\n");
+
+		// }
 		else {
-			sscanf(client_message, "%d %s %s", &option, flag, args);
-			printf("three\n");
+			sscanf(client_message, "%d %s %99[^\n]", &option, flag, args);
+			printf("%s",args);
 		}
 		if(option == 1) {
 			if(strcmp(flag, "longlist") == 0) {
@@ -147,6 +155,57 @@ void handle_in_client(void *socket_info) {
 					send(sock.socket_desc, out_message, strlen(out_message), 0);
 				}
 				closedir(dir);
+			}
+			if (strcmp(flag, "shortlist") == 0){
+				// 	for(i = 0;args[i] != '\0'; i++) {
+				// 		start_stamp[i] = args[i];
+				// 		if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
+				// 		start_stamp[i+1] = 'M';
+				// 		break;
+				// 		}
+				// 	}
+				// 	int index = i + 3;
+				// 	int index_sub = 0;
+				// 	for(i = index;args[i] != '\0'; i++) {
+				// 		end_stamp[index_sub] = args[i];
+				// 		if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
+				// 		end_stamp[index_sub+1] = 'M';
+				// 		break;
+				// 		}
+				// 		index_sub += 1;
+				// 	}
+				// 	printf("%s %s\n",start_stamp, end_stamp);
+				// if(strptime(start_stamp, "%c",&tm1) == NULL)
+    //         			printf("\nshit\n");          
+    // 			if(strptime(end_stamp, "%c",&tm2) == NULL)
+    //         			printf("\nshit\n");
+
+    //         	t1 = mktime(&tm1);
+    // 			t2 = mktime(&tm2);
+				// dir = opendir(UPLOAD_FOLDER);
+				// while((ent = readdir(dir)) != NULL) {
+				
+				// 	sprintf(filename, "%s%s", UPLOAD_FOLDER, ent->d_name);
+				// 	stat(filename, &buf);
+
+    // 			//comment	// if(strptime(buf.st_mtime, "%b %d %r",&tm_file) == NULL)
+    //         	//comment		// printf("\nstrptime failed\n");
+    //         	//comment	// file_t = mktime(&tm_file);
+    //         		file_t = buf.st_mtime;
+    //         		time(&file_t);
+    //         		timeptr = localtime(&file_t);
+    //         	//comment	// sprintf(file_stamp,"%s %s %s %s",timeptr->tm_mon, timeptr->tm_mdayx)
+    //         	//comment	// tm_file = mktime(&file_t)
+    //         		if (cmptime(file_t,t1) > 0 && cmptime(t2,file_t) > 0){
+    //         	//comment		// printf("Gotcha\n");
+				// 	memset(out_message, 0, sizeof(out_message));
+				// 	printf("%s\n",asctime(timeptr) );
+				// 	sprintf(out_message, "%ld\t%ld\t%ld%s\n", t1, t2, file_t);
+				// 	}
+				// 	send(sock.socket_desc, out_message, strlen(out_message), 0);
+				// }
+				// closedir(dir);
+			
 			}
 		}
 		else if(option == 2) {
@@ -200,6 +259,7 @@ void init_out_client() {
 
 void handle_out_client() {
 	char out_message[MAXBUF], flag[MAXBUF], args[MAXBUF], in_message[MAXBUF];
+	char stamp[MAXBUF];
 	int option, read_size;
 	init_out_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
@@ -214,15 +274,20 @@ void handle_out_client() {
 		memset(out_message, 0, sizeof(out_message));
 		if(option == 1) {
 			if(strcmp(flag, "--longlist") == 0) {
-				sprintf(out_message, "1:longlist");
+				sprintf(out_message, "1#longlist");
 				printf("[%s-CLIENT]: Listing of the shared folder from: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
 				printf("File: Name\tSize\tTimestamp\tType\n");
+			}
+			if (strcmp(flag, "--shortlist") == 0){
+				scanf("%99[^\n]",stamp);
+				sprintf(out_message, "1#shortlist#%s",stamp);
+				printf("Listing Based On Time Stamps %s\n" ,stamp);
 			}
 		}
 		else if(option == 2) {
 			if(strcmp(flag, "--verify") == 0) {
 				scanf("%s", args);
-				sprintf(out_message, "2:verify:%s", args);
+				sprintf(out_message, "2#verify#%s", args);
 				printf("%s\n", out_message);
 			}
 		}
@@ -250,6 +315,9 @@ void change_to_absolute_path() {
 	}
 }
 
+int cmptime(time_t time1,time_t time2){
+ return difftime(time1,time2) > 0.0 ? 1 : -1; 
+} 
 int main(int argc, char *argv[]) {
 	int status, option, valid_folder = 0;
 	char temp_path[MAXBUF];
