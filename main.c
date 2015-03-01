@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <errno.h>
 #include <sys/socket.h>
 #include <resolv.h>
@@ -94,8 +95,9 @@ void handle_server() {
 void handle_in_client(void *socket_info) {
 	// Get the socket descriptor
 	struct network_info sock = *(struct network_info *)socket_info;
-	int read_size, len, i, option;
+	int read_size, len, i, option, reti;
 	DIR *dir;
+	regex_t regex;
 	struct dirent *ent;
 	struct stat buf;
 	time_t t1, t2, file_t;
@@ -126,7 +128,7 @@ void handle_in_client(void *socket_info) {
 		// }
 		else {
 			sscanf(client_message, "%d %s %99[^\n]", &option, flag, args);
-			printf("%s",args);
+			// printf("%s",args);
 		}
 		if(option == 1) {
 			if(strcmp(flag, "longlist") == 0) {
@@ -207,6 +209,51 @@ void handle_in_client(void *socket_info) {
 				// closedir(dir);
 			
 			}
+			if (strcmp(flag,"regex") == 0){
+
+				dir = opendir(UPLOAD_FOLDER);
+				while((ent = readdir(dir)) != NULL) {
+					if(ent->d_type == DT_REG)
+						file_type = "regular";
+					else if(ent->d_type == DT_DIR)
+						file_type = "directory";
+					else if(ent->d_type == DT_FIFO)
+						file_type = "FIFO";
+					else if(ent->d_type == DT_SOCK)
+						file_type = "socket";
+					else if(ent->d_type == DT_LNK)
+						file_type = "symlink";
+					else if(ent->d_type == DT_BLK)
+						file_type = "block dev";
+					else if(ent->d_type == DT_CHR)
+						file_type = "char dev";
+					else
+						file_type = "???";
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, ent->d_name);
+					stat(filename, &buf);
+					memset(out_message, 0, sizeof(out_message));
+					
+
+					/* Compile regular expression */
+					reti = regcomp(&regex, args, 0);
+					if (reti) {
+    					fprintf(stderr, "Could not compile regex\n");
+    					exit(1);
+					}
+
+					/* Execute regular expression */
+					reti = regexec(&regex, ent->d_name, 0, NULL, 0);
+					
+					if (!reti) {
+    					sprintf(out_message, "%s\t%lld\t%ld\t%s\n", ent->d_name, buf.st_size, buf.st_atime, file_type);
+						send(sock.socket_desc, out_message, strlen(out_message), 0);
+    				}
+					
+					regfree(&regex);
+					
+				}
+				closedir(dir);
+			}
 		}
 		else if(option == 2) {
 			if(strcmp(flag, "verify") == 0) {
@@ -259,7 +306,7 @@ void init_out_client() {
 
 void handle_out_client() {
 	char out_message[MAXBUF], flag[MAXBUF], args[MAXBUF], in_message[MAXBUF];
-	char stamp[MAXBUF];
+	char stamp[MAXBUF], regex_exp[MAXBUF];
 	int option, read_size;
 	init_out_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
@@ -282,6 +329,11 @@ void handle_out_client() {
 				scanf("%99[^\n]",stamp);
 				sprintf(out_message, "1#shortlist#%s",stamp);
 				printf("Listing Based On Time Stamps %s\n" ,stamp);
+			}
+			if (strcmp(flag,"--regex") == 0){
+				scanf("%99[^\n]",regex_exp);
+				sprintf(out_message,"1#regex#%s",regex_exp);
+				printf("Listing Based on Regex %s\n",regex_exp);
 			}
 		}
 		else if(option == 2) {
