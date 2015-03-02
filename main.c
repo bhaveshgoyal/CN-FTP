@@ -24,7 +24,7 @@ struct network_info {
 	struct sockaddr_in conn_addr;
 } server, in_client, out_client;
 
-char NICK[MAXBUF], UPLOAD_FOLDER[MAXBUF] , OWN_FOLDER[MAXBUF];
+char NICK[MAXBUF], UPLOAD_FOLDER[MAXBUF];
 
 // Function declarations
 void print_error_message(char *message);
@@ -102,7 +102,6 @@ void handle_in_client(void *socket_info) {
 	struct dirent *ent;
 	struct stat buf;
 	time_t t1, t2, file_t;
-	unsigned char c[MD5_DIGEST_LENGTH];
 	struct tm *timeptr,tm1, tm2, tm_file;
 	char start_stamp[MAXBUF], end_stamp[MAXBUF], file_stamp[MAXBUF];
 	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type;
@@ -260,29 +259,30 @@ void handle_in_client(void *socket_info) {
 		else if(option == 2) {
 			if(strcmp(flag, "verify") == 0) {
 				char *fname = args;
-    			int i;
-    			FILE *inFile = fopen(fname, "rb");
-    			MD5_CTX mdContext;
-    			int bytes;
-   				unsigned char data[MAXBUF];
+				int i;
+				FILE *inFile = fopen(fname, "rb");
+				MD5_CTX mdContext;
+				int bytes;
+				unsigned char data[MAXBUF];
+				unsigned char md5_hash[MD5_DIGEST_LENGTH];
 
-    			if (inFile == NULL) {
-        			sprintf (stderr,"%s Can't Be Opened.\n", filename);
-        			return 0;
-    			}
+				if(inFile == NULL) {
+					sprintf (stderr, "%s Can't Be Opened.\n", filename);
+					exit(0);
+				}
 
-    			MD5_Init (&mdContext);
-    			while ((bytes = fread (data, 1, MAXBUF, inFile)) != 0)
-        			MD5_Update (&mdContext, data, bytes);
-    			MD5_Final (c,&mdContext);
-    			for(i = 0; i < MD5_DIGEST_LENGTH; i++) printf("%02x", c[i]);
-    			
-    			sprintf(filename, "%s%s", UPLOAD_FOLDER, fname);
+				MD5_Init(&mdContext);
+				while((bytes = fread(data, 1, MAXBUF, inFile)) != 0)
+					MD5_Update(&mdContext, data, bytes);
+				MD5_Final(md5_hash, &mdContext);
+				for(i = 0; i < MD5_DIGEST_LENGTH; i++) printf("%02x", md5_hash[i]);
+
+				sprintf(filename, "%s%s", UPLOAD_FOLDER, fname);
 				stat(filename, &buf);
 				memset(out_message, 0, sizeof(out_message));
-    			sprintf(out_message, "\t%s\t%ld\n", OWN_FOLDER, buf.st_mtime);
+				sprintf(out_message, "\t%s\t%ld\n", UPLOAD_FOLDER, buf.st_mtime);
 				send(sock.socket_desc, out_message, strlen(out_message), 0);
-    			fclose (inFile);
+				fclose(inFile);
 			}
 		}
 	}
@@ -405,7 +405,6 @@ int main(int argc, char *argv[]) {
 	while(!valid_folder) {
 		printf("Enter upload folder path: ");
 		scanf("%s", UPLOAD_FOLDER);
-		strcpy(OWN_FOLDER,UPLOAD_FOLDER);
 		change_to_absolute_path();
 		dir = opendir(UPLOAD_FOLDER);
 		if(dir) {
