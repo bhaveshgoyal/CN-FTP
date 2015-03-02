@@ -258,31 +258,31 @@ void handle_in_client(void *socket_info) {
 		}
 		else if(option == 2) {
 			if(strcmp(flag, "verify") == 0) {
-				char *fname = args;
-				int i;
-				FILE *inFile = fopen(fname, "rb");
+				printf("%s\n", args);
+				FILE *in_file = fopen(args, "rb");
 				MD5_CTX mdContext;
 				int bytes;
-				unsigned char data[MAXBUF];
-				unsigned char md5_hash[MD5_DIGEST_LENGTH];
-
-				if(inFile == NULL) {
-					sprintf (stderr, "%s Can't Be Opened.\n", filename);
-					exit(0);
-				}
-
-				MD5_Init(&mdContext);
-				while((bytes = fread(data, 1, MAXBUF, inFile)) != 0)
-					MD5_Update(&mdContext, data, bytes);
-				MD5_Final(md5_hash, &mdContext);
-				for(i = 0; i < MD5_DIGEST_LENGTH; i++) printf("%02x", md5_hash[i]);
-
-				sprintf(filename, "%s%s", UPLOAD_FOLDER, fname);
-				stat(filename, &buf);
+				unsigned char data[MAXBUF], md5_hash[MD5_DIGEST_LENGTH];
 				memset(out_message, 0, sizeof(out_message));
-				sprintf(out_message, "\t%s\t%ld\n", UPLOAD_FOLDER, buf.st_mtime);
-				send(sock.socket_desc, out_message, strlen(out_message), 0);
-				fclose(inFile);
+				if(in_file == NULL) {
+					sprintf(out_message, "no");
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+				}
+				else {
+					sprintf(out_message, "yes");
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+					MD5_Init(&mdContext);
+					while((bytes = fread(data, 1, MAXBUF, in_file)) != 0)
+						MD5_Update(&mdContext, data, bytes);
+					MD5_Final(md5_hash, &mdContext);
+					for(i = 0; i < MD5_DIGEST_LENGTH; i++) printf("%02x", md5_hash[i]);
+
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+					stat(filename, &buf);
+					sprintf(out_message, "\t%s\t%ld\n", UPLOAD_FOLDER, buf.st_mtime);
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+				}
+				fclose(in_file);
 			}
 		}
 	}
@@ -350,12 +350,12 @@ void handle_out_client() {
 				printf("[%s-CLIENT]: Listing of the shared folder from: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
 				printf("File: Name\tSize\tTimestamp\tType\n");
 			}
-			if (strcmp(flag, "--shortlist") == 0){
+			if(strcmp(flag, "--shortlist") == 0){
 				scanf("%99[^\n]",stamp);
 				sprintf(out_message, "1#shortlist#%s",stamp);
 				printf("Listing Based On Time Stamps %s\n" ,stamp);
 			}
-			if (strcmp(flag,"--regex") == 0){
+			if(strcmp(flag,"--regex") == 0){
 				scanf("%99[^\n]",regex_exp);
 				sprintf(out_message,"1#regex#%s",regex_exp);
 				printf("Listing Based on Regex %s\n",regex_exp);
