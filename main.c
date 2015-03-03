@@ -102,7 +102,8 @@ void handle_in_client(void *socket_info) {
 	struct dirent *ent;
 	struct stat buf;
 	time_t t1, t2, file_t;
-	struct tm *timeptr,tm1, tm2, tm_file;
+	struct tm tm1, tm2;
+	struct tm *timeptr, tm_file;
 	char start_stamp[MAXBUF], end_stamp[MAXBUF], file_stamp[MAXBUF];
 	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type, in_message[MAXBUF];
 	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
@@ -160,54 +161,51 @@ void handle_in_client(void *socket_info) {
 				closedir(dir);
 			}
 			if (strcmp(flag, "shortlist") == 0){
-				// 	for(i = 0;args[i] != '\0'; i++) {
-				// 		start_stamp[i] = args[i];
-				// 		if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
-				// 		start_stamp[i+1] = 'M';
-				// 		break;
-				// 		}
-				// 	}
-				// 	int index = i + 3;
-				// 	int index_sub = 0;
-				// 	for(i = index;args[i] != '\0'; i++) {
-				// 		end_stamp[index_sub] = args[i];
-				// 		if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
-				// 		end_stamp[index_sub+1] = 'M';
-				// 		break;
-				// 		}
-				// 		index_sub += 1;
-				// 	}
-				// 	printf("%s %s\n",start_stamp, end_stamp);
-				// if(strptime(start_stamp, "%c",&tm1) == NULL)
-    //         			printf("\nshit\n");          
-    // 			if(strptime(end_stamp, "%c",&tm2) == NULL)
-    //         			printf("\nshit\n");
+					for(i = 0;args[i] != '\0'; i++) {
+						start_stamp[i] = args[i];
+						if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
+						start_stamp[i+1] = 'M';
+						break;
+						}
+					}
+					int index = i + 3;
+					int index_sub = 0;
+					for(i = index;args[i] != '\0'; i++) {
+						end_stamp[index_sub] = args[i];
+						if((args[i] == 'P' && args[i+1] == 'M') || args[i] == 'A' && args[i+1] == 'M') {
+						end_stamp[index_sub+1] = 'M';
+						break;
+						}
+						index_sub += 1;
+					}
+					printf("%s %s\n",start_stamp, end_stamp);
+				if(strptime(start_stamp, "%b %d %Y %I:%M:%S %p",&tm1) == NULL)
+            			sprintf(stderr,"\nString Parsing Failed\n");          
+    			if(strptime(end_stamp, "%b %d %Y %I:%M:%S %p",&tm2) == NULL)
+            			sprintf(stderr,"\nString PArsing Failed\n");
 
-    //         	t1 = mktime(&tm1);
-    // 			t2 = mktime(&tm2);
-				// dir = opendir(UPLOAD_FOLDER);
-				// while((ent = readdir(dir)) != NULL) {
+            	t1 = mktime(&tm1);
+    			t2 = mktime(&tm2);
+				dir = opendir(UPLOAD_FOLDER);
+
+				while((ent = readdir(dir)) != NULL) {
 				
-				// 	sprintf(filename, "%s%s", UPLOAD_FOLDER, ent->d_name);
-				// 	stat(filename, &buf);
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, ent->d_name);
+					stat(filename, &buf);
 
-    // 			//comment	// if(strptime(buf.st_mtime, "%b %d %r",&tm_file) == NULL)
-    //         	//comment		// printf("\nstrptime failed\n");
-    //         	//comment	// file_t = mktime(&tm_file);
-    //         		file_t = buf.st_mtime;
-    //         		time(&file_t);
-    //         		timeptr = localtime(&file_t);
-    //         	//comment	// sprintf(file_stamp,"%s %s %s %s",timeptr->tm_mon, timeptr->tm_mdayx)
-    //         	//comment	// tm_file = mktime(&file_t)
-    //         		if (cmptime(file_t,t1) > 0 && cmptime(t2,file_t) > 0){
-    //         	//comment		// printf("Gotcha\n");
-				// 	memset(out_message, 0, sizeof(out_message));
-				// 	printf("%s\n",asctime(timeptr) );
-				// 	sprintf(out_message, "%ld\t%ld\t%ld%s\n", t1, t2, file_t);
-				// 	}
-				// 	send(sock.socket_desc, out_message, strlen(out_message), 0);
-				// }
-				// closedir(dir);
+    				timeptr = localtime(&buf.st_mtime);
+            		strftime(file_stamp, sizeof(file_stamp),"%b %d %Y %I:%M:%S %p",timeptr);
+            		strptime(file_stamp, "%b %d %Y %I:%M:%S %p",&tm_file);
+            		file_t = mktime(&tm_file);
+            
+            		if (cmptime(file_t,t1) > 0 && cmptime(t2,file_t) > 0){
+   						memset(out_message, 0, sizeof(out_message));
+						sprintf(out_message, "%s\t%lld\t%s\n", ent->d_name, buf.st_size, file_stamp);
+						send(sock.socket_desc, out_message, strlen(out_message), 0);
+					}
+				
+				}
+				closedir(dir);
 			
 			}
 			if (strcmp(flag,"regex") == 0){
@@ -402,6 +400,7 @@ void handle_out_client() {
 				printf("[%s-CLIENT]: Listing of the shared folder from: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
 				printf("File: Name\tSize\tTimestamp\tType\n");
 			}
+			// Time Stamp Format <Month Abbreviated> date yr <12hr time seperated by :> AM/PM
 			if(strcmp(flag, "--shortlist") == 0){
 				scanf("%99[^\n]",stamp);
 				sprintf(out_message, "1#shortlist#%s",stamp);
