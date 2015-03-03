@@ -178,7 +178,7 @@ void handle_in_client(void *socket_info) {
 						}
 						index_sub += 1;
 					}
-					printf("%s %s\n",start_stamp, end_stamp);
+					// printf("%s %s\n",start_stamp, end_stamp);
 				if(strptime(start_stamp, "%b %d %Y %I:%M:%S %p",&tm1) == NULL)
             			sprintf(stderr,"\nString Parsing Failed\n");          
     			if(strptime(end_stamp, "%b %d %Y %I:%M:%S %p",&tm2) == NULL)
