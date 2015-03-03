@@ -258,31 +258,30 @@ void handle_in_client(void *socket_info) {
 		}
 		else if(option == 2) {
 			if(strcmp(flag, "verify") == 0) {
-				printf("%s\n", args);
-				FILE *in_file = fopen(args, "rb");
+				char filename[MAXBUF];
+				sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+				unsigned char c[MD5_DIGEST_LENGTH];
+				FILE *inFile = fopen(filename, "rb");
 				MD5_CTX mdContext;
-				int bytes;
-				unsigned char data[MAXBUF], md5_hash[MD5_DIGEST_LENGTH];
+				int bytes, i;
+				unsigned char data[MAXBUF];
 				memset(out_message, 0, sizeof(out_message));
-				if(in_file == NULL) {
+				memset(c, 0, sizeof(c));
+				if(inFile == NULL) {
 					sprintf(out_message, "no");
 					send(sock.socket_desc, out_message, strlen(out_message), 0);
 				}
 				else {
 					sprintf(out_message, "yes");
+					printf("%s\n", out_message);
 					send(sock.socket_desc, out_message, strlen(out_message), 0);
 					MD5_Init(&mdContext);
-					while((bytes = fread(data, 1, MAXBUF, in_file)) != 0)
+					while((bytes = fread (data, 1, MAXBUF, inFile)) != 0)
 						MD5_Update(&mdContext, data, bytes);
-					MD5_Final(md5_hash, &mdContext);
-					for(i = 0; i < MD5_DIGEST_LENGTH; i++) printf("%02x", md5_hash[i]);
-
-					sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
-					stat(filename, &buf);
-					sprintf(out_message, "\t%s\t%ld\n", UPLOAD_FOLDER, buf.st_mtime);
-					send(sock.socket_desc, out_message, strlen(out_message), 0);
+					MD5_Final(c,&mdContext);
+					send(sock.socket_desc, c, strlen(c), 0);
 				}
-				fclose(in_file);
+				fclose(inFile);
 			}
 		}
 	}
@@ -332,7 +331,7 @@ void init_out_client() {
 void handle_out_client() {
 	char out_message[MAXBUF], flag[MAXBUF], args[MAXBUF], in_message[MAXBUF];
 	char stamp[MAXBUF], regex_exp[MAXBUF];
-	int option, read_size;
+	int option, read_size, i;
 	init_out_client();
 	printf("[%s-CLIENT]: Connected to server: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
 	while(1) {
@@ -344,6 +343,7 @@ void handle_out_client() {
 		printf("Enter option: ");
 		scanf("%d%s", &option, flag);
 		memset(out_message, 0, sizeof(out_message));
+		memset(in_message, 0, sizeof(in_message));
 		if(option == 1) {
 			if(strcmp(flag, "--longlist") == 0) {
 				sprintf(out_message, "1#longlist");
@@ -360,6 +360,11 @@ void handle_out_client() {
 				sprintf(out_message,"1#regex#%s",regex_exp);
 				printf("Listing Based on Regex %s\n",regex_exp);
 			}
+			send(out_client.socket_desc, out_message, strlen(out_message), 0);
+			while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) > 0) {
+				printf("%s", in_message);
+				memset(in_message, 0, sizeof(in_message));
+			}
 		}
 		else if(option == 2) {
 			if(strcmp(flag, "--verify") == 0) {
@@ -367,11 +372,43 @@ void handle_out_client() {
 				sprintf(out_message, "2#verify#%s", args);
 				printf("%s\n", out_message);
 			}
-		}
-		send(out_client.socket_desc, out_message, strlen(out_message), 0);
-		while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) > 0) {
-			printf("%s", in_message);
-			memset(in_message, 0, sizeof(in_message));
+			send(out_client.socket_desc, out_message, strlen(out_message), 0);
+			read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0);
+			printf("%s\n", in_message);
+			if(strcmp(in_message, "no") == 0) {
+				printf("[%s-CLIENT]: Sorry, incorrect file name\n", NICK);
+			}
+			else if(strcmp(in_message, "yes") == 0) {
+				printf("cool thing\n");
+				memset(in_message, 0, sizeof(in_message));
+				read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0);
+
+				char filename[MAXBUF];
+				sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+				unsigned char c[MD5_DIGEST_LENGTH];
+				FILE *inFile = fopen(filename, "rb");
+				MD5_CTX mdContext;
+				int bytes, i;
+				unsigned char data[MAXBUF];
+				memset(c, 0, sizeof(c));
+				if(inFile == NULL) {
+					printf("[%s-CLIENT]: Sorry, file is not present on this machine\n", NICK);
+				}
+				else {
+					MD5_Init(&mdContext);
+					while((bytes = fread (data, 1, MAXBUF, inFile)) != 0)
+						MD5_Update(&mdContext, data, bytes);
+					MD5_Final(c,&mdContext);
+					if(strcmp(c, in_message) == 0) {
+						printf("[%s-CLIENT]: Files verified\n", NICK);
+					}
+					else {
+						printf("[%s-CLIENT]: Files are not the same\n", NICK);
+					}
+				}
+				fclose(inFile);
+
+			}
 		}
 	}
 }
