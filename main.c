@@ -96,7 +96,7 @@ void handle_server() {
 void handle_in_client(void *socket_info) {
 	// Get the socket descriptor
 	struct network_info sock = *(struct network_info *)socket_info;
-	int read_size, len, i, option, reti;
+	int read_size, len, i, option, reti, temp_size;
 	DIR *dir;
 	regex_t regex;
 	struct dirent *ent;
@@ -104,7 +104,7 @@ void handle_in_client(void *socket_info) {
 	time_t t1, t2, file_t;
 	struct tm *timeptr,tm1, tm2, tm_file;
 	char start_stamp[MAXBUF], end_stamp[MAXBUF], file_stamp[MAXBUF];
-	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type;
+	char out_message[MAXBUF], client_message[MAXBUF], flag[MAXBUF], args[MAXBUF], filename[MAXBUF], *file_type, in_message[MAXBUF];
 	printf("[%s-SERVER]: Client %s:%d connected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 
 	// Receive a message from client
@@ -307,6 +307,33 @@ void handle_in_client(void *socket_info) {
 				fclose(fp);
 			}
 		}
+		else if(option == 4) {
+			if(strcmp(flag, "tcp") == 0) {
+				char choice[MAXBUF], filename[MAXBUF];
+				printf("Want the file?(yes/no) :%s\n", args);
+				scanf("%s", choice);
+				memset(out_message, 0, sizeof(out_message));
+				if(strcmp(choice, "yes") == 0) {
+					sprintf(out_message, "yes");
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+					FILE *fp = fopen(filename, "wb");
+					printf("Started writing to file: %s\n", filename);
+		/*			memset(in_message, 0, sizeof(in_message));
+					while((temp_size = recv(out_client.socket_desc, client_message, MAXBUF, 0)) > 0) {
+						printf("%s", in_message);
+						fputs(in_message, fp);
+						memset(in_message, 0, sizeof(in_message));
+					}*/
+					fclose(fp);
+					printf("Finished writing to file: %s\n", filename);
+				}
+				else {
+					sprintf(out_message, "no");
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+				}
+			}
+		}
 	}
 	printf("[%s-SERVER]: Client %s:%d disconnected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 }
@@ -363,11 +390,13 @@ void handle_out_client() {
 		printf("2. FileHash --flag (args)\n");
 		printf("3. FileDownload --flag (args)\n");
 		printf("4. FileUpload --flag (args)\n");
+		printf("5. Connect to different server\n");
 		printf("Enter option: ");
-		scanf("%d%s", &option, flag);
+		scanf("%d", &option);
 		memset(out_message, 0, sizeof(out_message));
 		memset(in_message, 0, sizeof(in_message));
 		if(option == 1) {
+			scanf("%s", flag);
 			if(strcmp(flag, "--longlist") == 0) {
 				sprintf(out_message, "1#longlist");
 				printf("[%s-CLIENT]: Listing of the shared folder from: %s:%d\n", NICK, inet_ntoa(out_client.conn_addr.sin_addr), PORT);
@@ -390,6 +419,7 @@ void handle_out_client() {
 			}
 		}
 		else if(option == 2) {
+			scanf("%s", flag);
 			if(strcmp(flag, "--verify") == 0) {
 				scanf("%s", args);
 				sprintf(out_message, "2#verify#%s", args);
@@ -434,8 +464,8 @@ void handle_out_client() {
 			}
 		}
 		else if(option == 3) {
+			scanf("%s%s", flag, args);
 			char filename[MAXBUF], temp[MAXBUF];
-			scanf("%s", args);
 			if(strcmp(flag, "--tcp") == 0) {
 				memset(out_message, 0, sizeof(out_message));
 				memset(in_message, 0, sizeof(in_message));
@@ -461,6 +491,44 @@ void handle_out_client() {
 					printf("[%s-CLIENT]: Finished writing to file: %s\n", NICK, filename);
 				}
 			}
+		}
+		else if(option == 4) {
+			scanf("%s%s", flag, args);
+			char filename[MAXBUF];
+			if(strcmp(flag, "--tcp") == 0) {
+				sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+				FILE *fp = fopen(filename, "rb");
+				if(fp == NULL) {
+					printf("[%s-CLIENT]: Sorry, file does not exist: %s\n", NICK, filename);
+				}
+				else {
+					memset(out_message, 0, sizeof(out_message));
+					memset(in_message, 0, sizeof(in_message));
+					sprintf(out_message, "4#tcp#%s", args);
+					send(out_client.socket_desc, out_message, strlen(out_message), 0);
+					printf("%s\n", out_message);
+					while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) <= 0) {
+						memset(in_message, 0, sizeof(in_message));
+					}
+					printf("%s\n", in_message);
+					if(strcmp(in_message, "yes") == 0) {
+						printf("[%s-CLIENT]: File upload accepted: %s\n", NICK, filename);
+						memset(out_message, 0, sizeof(out_message));
+						while(fgets(out_message, sizeof(out_message), fp)){
+							printf("%s", out_message);
+					//		send(out_client.socket_desc, out_message, strlen(out_message), 0);
+							memset(out_message, 0, sizeof(out_message));
+						}
+					}
+					else {
+						printf("[%s-CLIENT]: Sorry, file upload denied: %s\n", NICK, filename);
+					}
+				}
+				fclose(fp);
+			}
+		}
+		else if(option == 5) {
+			init_out_client();
 		}
 	}
 }
