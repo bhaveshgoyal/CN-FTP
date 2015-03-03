@@ -284,6 +284,29 @@ void handle_in_client(void *socket_info) {
 				fclose(inFile);
 			}
 		}
+		else if(option == 3) {
+			if(strcmp(flag, "tcp") == 0) {
+				char filename[MAXBUF];
+				sprintf(filename, "%s%s", UPLOAD_FOLDER, args);
+				printf("%s\n", filename);
+				FILE *fp = fopen(filename, "rb");
+				memset(out_message, 0, sizeof(out_message));
+				if(fp == NULL) {
+					sprintf(out_message, "no");
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+				}
+				else {
+					sprintf(out_message, "yes#%s", args);
+					send(sock.socket_desc, out_message, strlen(out_message), 0);
+					memset(out_message, 0, sizeof(out_message));
+					while(fgets(out_message, sizeof(out_message), fp)){
+						send(sock.socket_desc, out_message, strlen(out_message), 0);
+						memset(out_message, 0, sizeof(out_message));
+					}
+				}
+				fclose(fp);
+			}
+		}
 	}
 	printf("[%s-SERVER]: Client %s:%d disconnected\n", NICK, inet_ntoa(sock.conn_addr.sin_addr), ntohs(sock.conn_addr.sin_port));
 }
@@ -408,6 +431,35 @@ void handle_out_client() {
 				}
 				fclose(inFile);
 
+			}
+		}
+		else if(option == 3) {
+			char filename[MAXBUF], temp[MAXBUF];
+			scanf("%s", args);
+			if(strcmp(flag, "--tcp") == 0) {
+				memset(out_message, 0, sizeof(out_message));
+				memset(in_message, 0, sizeof(in_message));
+				memset(filename, 0, sizeof(filename));
+				memset(temp, 0, sizeof(temp));
+				sprintf(out_message, "3#tcp#%s", args);
+				send(out_client.socket_desc, out_message, strlen(out_message), 0);
+				recv(out_client.socket_desc, in_message, MAXBUF, 0);
+				if(strcmp(in_message, "no") == 0) {
+					printf("[%s-CLIENT]: Sorry, file does not exist\n", NICK);
+				}
+				else {
+					sscanf(in_message, "yes#%s", temp);
+					sprintf(filename, "%s%s", UPLOAD_FOLDER, temp);
+					printf("[%s-CLIENT]: Started writing to file: %s\n", NICK, filename);
+					FILE *fp = fopen(filename, "wb");
+					memset(in_message, 0, sizeof(in_message));
+					while((read_size = recv(out_client.socket_desc, in_message, MAXBUF, 0)) > 0) {
+						fputs(in_message, fp);
+						memset(in_message, 0, sizeof(in_message));
+					}
+					fclose(fp);
+					printf("[%s-CLIENT]: Finished writing to file: %s\n", NICK, filename);
+				}
 			}
 		}
 	}
